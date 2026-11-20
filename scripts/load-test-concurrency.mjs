@@ -69,8 +69,8 @@ async function runConcurrencyTest() {
       },
     ]);
 
-    // Créer N votants + appareils liés
-    const voterRows = Array.from({ length: CONCURRENT_VOTERS }, () => ({
+    // Créer N + 1 votants + appareils liés (1 pour test A/B + N pour pic de charge)
+    const voterRows = Array.from({ length: CONCURRENT_VOTERS + 1 }, () => ({
       id: crypto.randomUUID(),
       auth_user_id: crypto.randomUUID(),
       auth_provider: 'google',
@@ -137,15 +137,16 @@ async function runConcurrencyTest() {
     if (!closedErr) throw new Error('ÉCHEC : le vote sur passage fermé aurait dû être refusé !');
     console.log('   OK : note 7 refusée + passage fermé refusé.');
 
-    // TEST C : Pic de charge (N votants simultanés)
-    console.log(`\n4) Test pic de charge (${CONCURRENT_VOTERS} votants simultanés)...`);
+    // TEST C : Pic de charge (N nouveaux votants simultanés distincts de firstVoter)
+    const burstVoters = voterRows.slice(1);
+    console.log(`\n4) Test pic de charge (${burstVoters.length} votants simultanés)...`);
     const t0 = performance.now();
     const burstResults = await Promise.all(
-      voterRows.map((v, i) =>
+      burstVoters.map((v, i) =>
         supabase.rpc('submit_public_score', {
           p_performance_id: testPerfOpenId,
           p_voter_id: v.id,
-          p_device_id: deviceRows[i].id,
+          p_device_id: deviceRows[i + 1].id,
           p_score: [2, 4, 6, 8, 10][i % 5],
           p_ip_hash: `load-ip-${i}`,
         })
@@ -160,17 +161,18 @@ async function runConcurrencyTest() {
       .eq('performance_id', testPerfOpenId)
       .single();
 
+    const expectedTotalCount = burstVoters.length + 1;
     if (burstFailures.length > 0) {
       throw new Error(`ÉCHEC pic : ${burstFailures.length} requêtes en erreur.`);
     }
-    if (!agg || agg.scores_count !== CONCURRENT_VOTERS) {
+    if (!agg || agg.scores_count !== expectedTotalCount) {
       throw new Error(
-        `ÉCHEC agrégat : scores_count=${agg?.scores_count}, attendu=${CONCURRENT_VOTERS}`
+        `ÉCHEC agrégat : scores_count=${agg?.scores_count}, attendu=${expectedTotalCount}`
       );
     }
 
     console.log(
-      `   OK : ${CONCURRENT_VOTERS}/${CONCURRENT_VOTERS} notes enregistrées en ${elapsedMs} ms (scores_count=${agg.scores_count}, sum=${agg.scores_sum}).`
+      `   OK : ${burstVoters.length}/${burstVoters.length} notes enregistrées en ${elapsedMs} ms (scores_count=${agg.scores_count}, sum=${agg.scores_sum}).`
     );
   } finally {
     console.log('\n5) Nettoyage des données de test...');

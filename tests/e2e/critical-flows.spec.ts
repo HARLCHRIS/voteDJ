@@ -106,9 +106,10 @@ test.describe('Parcours Public & Mobile /vote', () => {
 
     await page.getByRole('button', { name: 'Attribuer la note 8 sur 10' }).click();
     await expect(group).toBeHidden();
-    await expect(
-      page.getByRole('button', { name: /TA NOTE : 8/i })
-    ).toBeVisible();
+    const votedBtn = page.getByRole('button', { name: /TA NOTE : 8/i });
+    await expect(votedBtn).toBeVisible();
+    await expect(votedBtn).toBeDisabled();
+    await expect(group).toBeHidden();
   });
 });
 

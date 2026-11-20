@@ -67,6 +67,7 @@ export function VotePosterScreen({
   onRetry,
 }: VotePosterScreenProps) {
   const [pickerOpen, setPickerOpen] = useState(initialPickerOpen);
+  const [pendingScore, setPendingScore] = useState<AllowedScore | null>(null);
 
   useEffect(() => {
     if (!nextDjPhotoUrl || typeof window === 'undefined') {
@@ -77,14 +78,26 @@ export function VotePosterScreen({
   }, [nextDjPhotoUrl]);
 
   useEffect(() => {
-    if (phase !== 'open' && phase !== 'voted') {
+    if (phase !== 'open') {
       setPickerOpen(false);
+      setPendingScore(null);
     }
   }, [phase]);
 
+  const isSubmittingScore =
+    scoreSubmitStatus === 'loading' || pendingScore !== null;
+
   const handleScoreClick = async (score: AllowedScore) => {
-    await onSelectScore(score);
-    setPickerOpen(false);
+    if (phase !== 'open' || isSubmittingScore) {
+      return;
+    }
+    setPendingScore(score);
+    try {
+      await onSelectScore(score);
+      setPickerOpen(false);
+    } finally {
+      setPendingScore(null);
+    }
   };
 
   const showDjCenterpiece =
@@ -93,7 +106,6 @@ export function VotePosterScreen({
   const isActionClickable =
     phase === 'unauthenticated' ||
     phase === 'open' ||
-    phase === 'voted' ||
     phase === 'error';
 
   const handleLeftBlockClick = () => {
@@ -101,7 +113,7 @@ export function VotePosterScreen({
       onSignInGoogle();
       return;
     }
-    if (phase === 'open' || phase === 'voted') {
+    if (phase === 'open') {
       setPickerOpen((prev) => !prev);
       return;
     }
@@ -251,22 +263,22 @@ export function VotePosterScreen({
           </div>
         ) : null}
 
-        {pickerOpen && (phase === 'open' || phase === 'voted') ? (
+        {pickerOpen && phase === 'open' ? (
           <div
             role="group"
             aria-label="Choisir une note de 2 à 10"
             className="mb-2.5 flex items-center justify-between gap-1.5 rounded-2xl border-2 border-white/85 bg-[#04240F]/95 px-2.5 py-2.5 shadow-[0_16px_36px_rgba(0,0,0,0.65)] backdrop-blur-sm sm:gap-2 sm:px-3 sm:py-3"
           >
             {ALLOWED_SCORES.map((value) => {
-              const isSelected = currentScore === value;
-              const isSubmitting =
-                scoreSubmitStatus === 'loading' && isSelected;
+              const isSelected =
+                currentScore === value || pendingScore === value;
+              const isSubmitting = isSubmittingScore && isSelected;
 
               return (
                 <button
                   key={value}
                   type="button"
-                  disabled={scoreSubmitStatus === 'loading'}
+                  disabled={isSubmittingScore}
                   onClick={() => void handleScoreClick(value)}
                   aria-label={`Attribuer la note ${value} sur 10`}
                   aria-pressed={isSelected}
@@ -311,11 +323,11 @@ export function VotePosterScreen({
                   'cursor-default bg-[#4B554E] text-white/90',
                 phase === 'closed' &&
                   'cursor-default bg-[#5C1212] text-white',
+                phase === 'voted' &&
+                  'cursor-default bg-[#09421A] text-[#E5ED1B]',
                 phase === 'error' &&
                   'bg-[#7D1515] text-[#E5ED1B] hover:bg-[#931B1B]',
-                (phase === 'open' ||
-                  phase === 'voted' ||
-                  phase === 'unauthenticated') &&
+                (phase === 'open' || phase === 'unauthenticated') &&
                   'bg-[#09421A] text-[#E5ED1B] hover:bg-[#0D5924] active:brightness-95'
               )}
             >

@@ -78,7 +78,7 @@ function VotePageContent() {
 
   const live = useLivePerformance();
   const openPerformance = live.data?.openPerformance ?? null;
-  const scoring = useSubmitScore(openPerformance?.id ?? null);
+  const scoring = useSubmitScore(openPerformance?.id ?? null, isActiveVoter);
 
   const [isOnline, setIsOnline] = useState(true);
   const [recentClosedDj, setRecentClosedDj] =

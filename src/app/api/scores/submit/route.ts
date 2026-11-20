@@ -23,6 +23,19 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
+ * Construit la réponse HTTP 409 lorsque le votant a déjà attribué une note définitive.
+ */
+function buildAlreadyVotedResponse(existingScore: AllowedScore) {
+  return NextResponse.json(
+    {
+      error: 'Vous avez déjà voté pour ce DJ. Votre note est définitive.',
+      existingScore,
+    },
+    { status: 409 }
+  );
+}
+
+/**
  * Endpoint critique `submit-score` (FR-4, FR-5, FR-10, FR-12).
  * Vérifie côté serveur : session Google, note dans {2,4,6,8,10}, rate limiting,
  * liaison appareil/compte, passage ouvert, puis exécute `submit_public_score`.
@@ -161,6 +174,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Règle stricte : une fois votée, la note pour ce DJ ne peut plus être modifiée
+  const { data: existingScore } = await serviceClient
+    .from('public_scores')
+    .select('id, score')
+    .eq('performance_id', performanceId)
+    .eq('voter_id', voter.id)
+    .maybeSingle();
+
+  if (existingScore) {
+    return buildAlreadyVotedResponse(existingScore.score);
+  }
+
   const { data: rpcResult, error: rpcError } = await serviceClient.rpc(
     'submit_public_score',
     {
@@ -173,6 +198,17 @@ export async function POST(request: NextRequest) {
   );
 
   if (rpcError) {
+    const { data: racedExistingScore } = await serviceClient
+      .from('public_scores')
+      .select('id, score')
+      .eq('performance_id', performanceId)
+      .eq('voter_id', voter.id)
+      .maybeSingle();
+
+    if (racedExistingScore) {
+      return buildAlreadyVotedResponse(racedExistingScore.score);
+    }
+
     return NextResponse.json(
       { error: rpcError.message || 'Notation impossible pour ce passage.' },
       { status: 400 }
