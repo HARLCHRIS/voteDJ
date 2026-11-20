@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+:root {
+  /* Variables CSS échantillonnées depuis docs/design/vote-flyer.jpeg */
+  --vote-bg-top: #0c6b32;
+  --vote-bg-mid: #085124;
+  --vote-bg-bottom: #043215;
+  --vote-block-green: #09421a;
+  --vote-check-light: #6ce624;
+  --vote-check-base: #28c840;
+  --vote-check-shadow: #0d6e1e;
+  --vote-yellow: #e5ed1b;
+  --vote-crimson: #8b1a1a;
+  --vote-white: #ffffff;
+  --vote-ink: #111111;
+  --vote-muted-block: #4b554e;
+
+  /* Alias compatibilité back-office */
+  --festival-forest: var(--vote-bg-bottom);
+  --festival-emerald: var(--vote-bg-top);
+  --festival-cartouche: var(--vote-block-green);
+  --festival-lime: var(--vote-check-light);
+  --festival-check: var(--vote-check-base);
+  --festival-yellow: var(--vote-yellow);
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--vote-bg-bottom);
+    color: var(--vote-white);
+    font-family: var(--font-montserrat), system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+.poster-bg {
+  background:
+    radial-gradient(circle at 78% 18%, rgba(108, 230, 36, 0.2) 0%, transparent 44%),
+    radial-gradient(circle at 18% 76%, rgba(40, 200, 64, 0.2) 0%, transparent 48%),
+    linear-gradient(
+      165deg,
+      var(--vote-bg-top) 0%,
+      var(--vote-bg-mid) 48%,
+      var(--vote-bg-bottom) 100%
+    );
+}
+
+.vote-safe-screen {
+  min-height: 100dvh;
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  padding-left: max(14px, env(safe-area-inset-left));
+  padding-right: max(14px, env(safe-area-inset-right));
+}
+
+@keyframes vinyl-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-vinyl-slow {
+  animation: vinyl-spin 14s linear infinite;
+}
+
+@keyframes float-badge {
+  0%, 100% {
+    transform: translateY(0px) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(3deg);
+  }
+}
+
+.animate-float-badge {
+  animation: float-badge 5s ease-in-out infinite;
+}
+
+@keyframes dj-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(22px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-dj-enter {
+  animation: dj-enter 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-vinyl-slow,
+  .animate-float-badge,
+  .animate-dj-enter {
+    animation: none !important;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
