@@ -79,6 +79,7 @@ export interface LiveStatusPayload {
     id: string;
     stageName: string;
     roundName: RoundName;
+    performanceOrder: number;
     photoUrl: string | null;
     closedAt: string | null;
   } | null;

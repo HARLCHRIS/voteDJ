@@ -51,6 +51,7 @@ export async function GET() {
     const activeRoundRow =
       rounds.find((r) => r.status === 'live') ??
       rounds.find((r) => r.status === 'scheduled') ??
+      [...rounds].reverse().find((r) => r.status === 'completed') ??
       rounds[0] ??
       null;
 
@@ -125,9 +126,16 @@ export async function GET() {
       } else if (closedCountInRound > 0) {
         const latestClosed = [...roundPerfs]
           .filter((p) => p.status === 'closed')
-          .sort((a, b) =>
-            (b.closed_at ?? '').localeCompare(a.closed_at ?? '')
-          )[0];
+          .sort((a, b) => {
+            const aTime = a.closed_at ? Date.parse(a.closed_at) : Number.NEGATIVE_INFINITY;
+            const bTime = b.closed_at ? Date.parse(b.closed_at) : Number.NEGATIVE_INFINITY;
+            const safeATime = Number.isNaN(aTime) ? Number.NEGATIVE_INFINITY : aTime;
+            const safeBTime = Number.isNaN(bTime) ? Number.NEGATIVE_INFINITY : bTime;
+            if (safeBTime !== safeATime) {
+              return safeBTime - safeATime;
+            }
+            return b.performance_order - a.performance_order;
+          })[0];
 
         if (latestClosed) {
           const { data: closedDj } = await serviceClient
@@ -140,6 +148,7 @@ export async function GET() {
               id: latestClosed.id,
               stageName: closedDj.stage_name,
               roundName: activeRoundRow.name,
+              performanceOrder: latestClosed.performance_order,
               photoUrl: closedDj.photo_url,
               closedAt: latestClosed.closed_at,
             };

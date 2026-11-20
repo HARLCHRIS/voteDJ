@@ -78,6 +78,9 @@ function VotePageContent() {
 
   const live = useLivePerformance();
   const openPerformance = live.data?.openPerformance ?? null;
+  const hasServerEmptyState = Boolean(
+    live.data && !live.data.openPerformance && !live.data.lastClosedPerformance
+  );
   const scoring = useSubmitScore(openPerformance?.id ?? null, isActiveVoter);
 
   const [isOnline, setIsOnline] = useState(true);
@@ -106,7 +109,7 @@ function VotePageContent() {
     };
   }, []);
 
-  // Détecte la clôture d'un passage en direct pour afficher brièvement « VOTE CLÔTURÉ »
+  // Détecte la clôture d'un passage en direct pour basculer immédiatement sur « VOTE CLÔTURÉ »
   useEffect(() => {
     if (openPerformance) {
       const view: VotePosterDjView = {
@@ -121,13 +124,17 @@ function VotePageContent() {
       return;
     }
 
+    if (hasServerEmptyState) {
+      prevOpenRef.current = null;
+      setRecentClosedDj(null);
+      return;
+    }
+
     if (prevOpenRef.current) {
       setRecentClosedDj(prevOpenRef.current);
       prevOpenRef.current = null;
-      const timer = window.setTimeout(() => setRecentClosedDj(null), 12000);
-      return () => window.clearTimeout(timer);
     }
-  }, [openPerformance]);
+  }, [openPerformance, hasServerEmptyState]);
 
   const previewDj = TEST_DJS[previewDjKey] ?? TEST_DJS['1']!;
   const nextPreviewKey =
@@ -144,20 +151,17 @@ function VotePageContent() {
         photoUrl: openPerformance.dj.photoUrl,
       };
     }
-    if (recentClosedDj) {
-      return recentClosedDj;
-    }
-    if (
-      live.data?.activeRound?.status === 'completed' &&
-      live.data.lastClosedPerformance
-    ) {
+    if (live.data?.lastClosedPerformance) {
       return {
         id: live.data.lastClosedPerformance.id,
         stageName: live.data.lastClosedPerformance.stageName,
         roundName: live.data.lastClosedPerformance.roundName,
-        performanceOrder: 1,
+        performanceOrder: live.data.lastClosedPerformance.performanceOrder,
         photoUrl: live.data.lastClosedPerformance.photoUrl,
       };
+    }
+    if (recentClosedDj) {
+      return recentClosedDj;
     }
     return null;
   }, [openPerformance, recentClosedDj, live.data]);
@@ -245,11 +249,7 @@ function VotePageContent() {
     phase = 'error';
     errorMessage = scoring.error;
   } else if (!openPerformance) {
-    if (
-      recentClosedDj ||
-      (live.data?.activeRound?.status === 'completed' &&
-        live.data.lastClosedPerformance)
-    ) {
+    if (recentClosedDj || live.data?.lastClosedPerformance) {
       phase = 'closed';
     } else {
       phase = 'waiting';
