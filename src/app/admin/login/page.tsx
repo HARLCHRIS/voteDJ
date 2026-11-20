@@ -1,16 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Loader2, LockKeyhole } from 'lucide-react';
 import { FestivalHeader } from '@/components/shared/FestivalHeader';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 /**
  * Page de connexion administrateur (email + mot de passe).
+ * Utilise une navigation complète (`window.location.assign`) après authentification
+ * pour éviter tout cache de redirection `307` préchargé par le routeur Next.js.
  */
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -30,19 +30,30 @@ export default function AdminLoginPage() {
     setStatus('loading');
     setError(null);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (signInError) {
+      if (signInError) {
+        setStatus('error');
+        setError('Identifiants administrateur invalides.');
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const nextParam = params.get('next');
+      const targetPath =
+        nextParam && nextParam.startsWith('/admin') && !nextParam.startsWith('/admin/login')
+          ? nextParam
+          : '/admin';
+
+      window.location.assign(targetPath);
+    } catch {
       setStatus('error');
-      setError('Identifiants administrateur invalides.');
-      return;
+      setError('Erreur réseau lors de la connexion. Réessayez.');
     }
-
-    router.push('/admin');
-    router.refresh();
   };
 
   return (
@@ -72,6 +83,7 @@ export default function AdminLoginPage() {
               </label>
               <input
                 type="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -86,6 +98,7 @@ export default function AdminLoginPage() {
               </label>
               <input
                 type="password"
+                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -122,4 +135,3 @@ export default function AdminLoginPage() {
     </div>
   );
 }
-

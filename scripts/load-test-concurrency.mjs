@@ -174,8 +174,10 @@ async function runConcurrencyTest() {
     );
   } finally {
     console.log('\n5) Nettoyage des données de test...');
-    await supabase.from('events').delete().eq('id', testEventId);
+    await supabase.from('performances').delete().in('id', [testPerfOpenId, testPerfClosedId]);
     await supabase.from('djs').delete().in('id', [testDjOpenId, testDjClosedId]);
+    await supabase.from('rounds').delete().eq('id', testRoundId);
+    await supabase.from('events').delete().eq('id', testEventId);
     if (createdVoterIds.length > 0) {
       await supabase.from('voters').delete().in('id', createdVoterIds);
     }

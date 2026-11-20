@@ -102,6 +102,7 @@ export function FestivalHeader({
             <Link
               key={item.href}
               href={item.href}
+              prefetch={item.href === '/admin' ? false : undefined}
               className={cn(
                 'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors',
                 isActive
