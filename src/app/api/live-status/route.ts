@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/server';
 import type { LiveStatusPayload, PublicPerformanceItem, PublicRoundSummary } from '@/types';
 
-export const revalidate = 3;
+export const dynamic = 'force-dynamic';
+
+const CACHE_HEADERS = {
+  'Cache-Control': 'public, max-age=0, s-maxage=2, must-revalidate',
+};
 
 const DEMO_FALLBACK_PAYLOAD: LiveStatusPayload = {
   eventName: 'Eat & Drink Festival Cotonou 2027 – DJ Challenge',
@@ -20,17 +24,15 @@ const DEMO_FALLBACK_PAYLOAD: LiveStatusPayload = {
 };
 
 /**
- * Endpoint public léger et mis en cache (s-maxage=3) retournant l'état du direct
- * et le DJ actuellement sur scène sans exposer aucun résultat de notation.
+ * Endpoint public dynamique mis en cache CDN très court (s-maxage=2, sans stale)
+ * retournant le DJ actuellement sur scène sans exposer aucun score.
  */
 export async function GET() {
   const serviceClient = createSupabaseServiceClient();
 
   if (!serviceClient) {
     return NextResponse.json(DEMO_FALLBACK_PAYLOAD, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=3, stale-while-revalidate=2',
-      },
+      headers: CACHE_HEADERS,
     });
   }
 
@@ -42,10 +44,14 @@ export async function GET() {
       .limit(1)
       .maybeSingle();
 
-    const { data: roundRows } = await serviceClient
+    const roundsQuery = serviceClient
       .from('rounds')
       .select('id, name, order_number, status, min_scores_required')
       .order('order_number', { ascending: true });
+
+    const { data: roundRows } = eventRow
+      ? await roundsQuery.eq('event_id', eventRow.id)
+      : await roundsQuery;
 
     const rounds = roundRows ?? [];
     const activeRoundRow =
@@ -170,9 +176,7 @@ export async function GET() {
     };
 
     return NextResponse.json(payload, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=3, stale-while-revalidate=2',
-      },
+      headers: CACHE_HEADERS,
     });
   } catch {
     return NextResponse.json(

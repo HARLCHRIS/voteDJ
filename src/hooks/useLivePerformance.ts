@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AsyncState, LiveStatusPayload } from '@/types';
 
-const POLL_INTERVAL_MS = 4000;
+const POLL_INTERVAL_MS = 3000;
 
 /**
- * Hook public qui interroge l'endpoint mis en cache `/api/live-status`
- * toutes les 4 secondes pour afficher le DJ actuellement sur scène (< 5 s).
- * Gère les 3 états : loading / success / error.
+ * Hook public qui interroge l'endpoint `/api/live-status`
+ * toutes les 3 secondes pour afficher le DJ actuellement sur scène (< 5 s).
+ * Ignore toute réponse plus ancienne que celle déjà affichée.
  */
 export function useLivePerformance(initialData?: LiveStatusPayload | null) {
   const [state, setState] = useState<AsyncState<LiveStatusPayload>>({
@@ -32,10 +32,17 @@ export function useLivePerformance(initialData?: LiveStatusPayload | null) {
       }
 
       const payload = (await response.json()) as LiveStatusPayload;
-      setState({
-        status: 'success',
-        data: payload,
-        error: null,
+      setState((prev) => {
+        const prevTs = prev.data?.updatedAt ? Date.parse(prev.data.updatedAt) : 0;
+        const nextTs = payload.updatedAt ? Date.parse(payload.updatedAt) : 0;
+        if (prev.data && prevTs > 0 && nextTs > 0 && nextTs < prevTs) {
+          return prev;
+        }
+        return {
+          status: 'success',
+          data: payload,
+          error: null,
+        };
       });
     } catch (err) {
       setState((prev) => ({
