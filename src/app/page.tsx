@@ -80,6 +80,7 @@ async function loadPublicProgram(): Promise<{
  */
 export default async function HomePage() {
   const { rounds } = await loadPublicProgram();
+  const visibleRounds = rounds.filter((r) => r.status !== 'draft');
 
   return (
     <div className="min-h-screen pt-6 pb-14 sm:pt-10">
@@ -158,9 +159,13 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Primes et DJ engagés (sans notes ni classement) */}
-        <section className="grid gap-5 md:grid-cols-2">
-          {rounds.map((round) => (
+        {/* Primes publiées et DJ engagés (les primes en brouillon restent masquées) */}
+        <section
+          className={
+            visibleRounds.length > 1 ? 'grid gap-5 md:grid-cols-2' : 'grid gap-5'
+          }
+        >
+          {visibleRounds.map((round) => (
             <div
               key={round.id}
               className="rounded-2xl border border-white/15 bg-[#042812]/85 p-5 shadow-xl"
@@ -186,7 +191,13 @@ export default async function HomePage() {
                   prochainement par l’organisation.
                 </p>
               ) : (
-                <ul className="mt-3 space-y-2">
+                <ul
+                  className={
+                    visibleRounds.length === 1
+                      ? 'mt-3 grid gap-2 sm:grid-cols-2'
+                      : 'mt-3 space-y-2'
+                  }
+                >
                   {round.djs.map((dj, index) => (
                     <li
                       key={dj.performanceId}
