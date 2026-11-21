@@ -86,10 +86,10 @@ export async function POST(request: NextRequest) {
   const clientIp = extractClientIp(request.headers);
   const ipHash = hashWithSalt(clientIp);
 
-  // Limitation de débit par compte votant ET par IP
+  // Limitation de débit par compte votant ET par IP (seuil IP large pour Wi-Fi/CGNAT festival)
   const [userRate, ipRate] = await Promise.all([
     checkRateLimit(`score:user:${user.id}`, 12, 60),
-    checkRateLimit(`score:ip:${ipHash}`, 40, 60),
+    checkRateLimit(`score:ip:${ipHash}`, 300, 60),
   ]);
 
   if (!userRate.allowed || !ipRate.allowed) {

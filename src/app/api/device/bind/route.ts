@@ -19,6 +19,7 @@ interface BindDeviceRequestBody {
   deviceToken?: string;
   fingerprint?: string;
   turnstileToken?: string | null;
+  checkExistingOnly?: boolean;
 }
 
 /**
@@ -55,7 +56,8 @@ export async function POST(request: NextRequest) {
 
   const clientIp = extractClientIp(request.headers);
   const ipHash = hashWithSalt(clientIp);
-  const rateCheck = await checkRateLimit(`bind:${ipHash}`, 25, 60);
+  // Tolérance élevée par IP pour absorber le Wi-Fi public du festival et le CGNAT mobile
+  const rateCheck = await checkRateLimit(`bind:${ipHash}`, 120, 60);
   if (!rateCheck.allowed) {
     return NextResponse.json(
       {
@@ -92,19 +94,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as BindDeviceRequestBody;
-  const turnstileResult = await verifyTurnstileToken(body.turnstileToken, clientIp);
-  if (!turnstileResult.success) {
-    return NextResponse.json(
-      {
-        bound: false,
-        deviceId: null,
-        voterId: null,
-        conflictType: 'blocked',
-        message: turnstileResult.error ?? 'Vérification anti-robot échouée.',
-      } satisfies DeviceBindingResult,
-      { status: 403 }
-    );
-  }
+  const checkExistingOnly = Boolean(body.checkExistingOnly);
 
   const cookieStore = await cookies();
   const rawToken =
@@ -118,30 +108,15 @@ export async function POST(request: NextRequest) {
     : null;
   const userAgent = request.headers.get('user-agent') || null;
 
-  // 1. Créer ou récupérer le profil votant
+  // 1. Vérifier d'abord si le profil votant et son appareil sont déjà liés
+  // (les votants déjà liés ne doivent pas être bloqués par Turnstile au rechargement)
   let { data: voter } = await serviceClient
     .from('voters')
     .select('id, is_blocked')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
-  if (!voter) {
-    const { data: insertedVoter, error: voterErr } = await serviceClient
-      .from('voters')
-      .insert({ auth_user_id: user.id, auth_provider: 'google' })
-      .select('id, is_blocked')
-      .single();
-
-    if (voterErr || !insertedVoter) {
-      return NextResponse.json(
-        { error: 'Impossible de créer le profil votant.' },
-        { status: 500 }
-      );
-    }
-    voter = insertedVoter;
-  }
-
-  if (voter.is_blocked) {
+  if (voter?.is_blocked) {
     return NextResponse.json(
       {
         bound: false,
@@ -161,7 +136,12 @@ export async function POST(request: NextRequest) {
     .eq('device_token_hash', deviceTokenHash)
     .maybeSingle();
 
-  if (tokenDevice && tokenDevice.unlinked_at === null && tokenDevice.voter_id !== voter.id) {
+  if (
+    voter &&
+    tokenDevice &&
+    tokenDevice.unlinked_at === null &&
+    tokenDevice.voter_id !== voter.id
+  ) {
     await serviceClient.from('device_events').insert({
       device_id: tokenDevice.id,
       voter_id: voter.id,
@@ -182,15 +162,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3. Vérifier si ce votant possède déjà un appareil actif différent
-  const { data: voterActiveDevice } = await serviceClient
-    .from('devices')
-    .select('id, device_token_hash, fingerprint_hash, status')
-    .eq('voter_id', voter.id)
-    .is('unlinked_at', null)
-    .maybeSingle();
+  // 3. Vérifier si ce votant possède déjà un appareil actif
+  const { data: voterActiveDevice } = voter
+    ? await serviceClient
+      .from('devices')
+      .select('id, device_token_hash, fingerprint_hash, status')
+      .eq('voter_id', voter.id)
+      .is('unlinked_at', null)
+      .maybeSingle()
+    : { data: null };
 
-  if (voterActiveDevice) {
+  if (voter && voterActiveDevice) {
     if (voterActiveDevice.status === 'blocked') {
       return NextResponse.json(
         {
@@ -230,13 +212,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Renouvellement silencieux si reconnu par empreinte (cookies effacés)
+    // Renouvellement silencieux (et mise à jour du hash de jeton si cookies/stockage effacés)
+    const deviceUpdatePayload: {
+      last_seen_at: string;
+      ip_hash: string;
+      device_token_hash?: string;
+    } = {
+      last_seen_at: new Date().toISOString(),
+      ip_hash: ipHash,
+    };
+
+    if (!tokenMatches && fingerprintMatches) {
+      deviceUpdatePayload.device_token_hash = deviceTokenHash;
+    }
+
     await serviceClient
       .from('devices')
-      .update({
-        last_seen_at: new Date().toISOString(),
-        ip_hash: ipHash,
-      })
+      .update(deviceUpdatePayload)
       .eq('id', voterActiveDevice.id);
 
     const okResponse = NextResponse.json({
@@ -258,7 +250,76 @@ export async function POST(request: NextRequest) {
     return okResponse;
   }
 
-  // 4. Vérifier s'il y a création en rafale depuis la même IP ou empreinte (FR-13)
+  // En mode pré-vérification rapide, ne pas exiger Turnstile ni créer de profil avant validation
+  if (checkExistingOnly) {
+    return NextResponse.json({
+      bound: false,
+      deviceId: null,
+      voterId: voter?.id ?? null,
+      conflictType: null,
+      message: null,
+    } satisfies DeviceBindingResult);
+  }
+
+  // 4. Vérification anti-robot obligatoire uniquement pour une nouvelle liaison d'appareil
+  const turnstileResult = await verifyTurnstileToken(body.turnstileToken, clientIp);
+  if (!turnstileResult.success) {
+    return NextResponse.json(
+      {
+        bound: false,
+        deviceId: null,
+        voterId: null,
+        conflictType: 'blocked',
+        message: turnstileResult.error ?? 'Vérification anti-robot échouée.',
+      } satisfies DeviceBindingResult,
+      { status: 403 }
+    );
+  }
+
+  // Créer le profil votant s'il n'existe pas encore
+  if (!voter) {
+    const { data: insertedVoter, error: voterErr } = await serviceClient
+      .from('voters')
+      .insert({ auth_user_id: user.id, auth_provider: 'google' })
+      .select('id, is_blocked')
+      .single();
+
+    if (voterErr || !insertedVoter) {
+      return NextResponse.json(
+        { error: 'Impossible de créer le profil votant.' },
+        { status: 500 }
+      );
+    }
+    voter = insertedVoter;
+  }
+
+  // Revérifier si le jeton appartient à un autre votant dans le cas où `voter` vient d'être créé
+  if (
+    tokenDevice &&
+    tokenDevice.unlinked_at === null &&
+    tokenDevice.voter_id !== voter.id
+  ) {
+    await serviceClient.from('device_events').insert({
+      device_id: tokenDevice.id,
+      voter_id: voter.id,
+      event_type: 'refused_second_account',
+      metadata: { ip_hash: ipHash, existing_voter_id: tokenDevice.voter_id },
+    });
+
+    return NextResponse.json(
+      {
+        bound: false,
+        deviceId: null,
+        voterId: voter.id,
+        conflictType: 'second_account',
+        message:
+          'Cet appareil est déjà utilisé avec un autre compte Google. Un seul compte par téléphone est autorisé.',
+      } satisfies DeviceBindingResult,
+      { status: 403 }
+    );
+  }
+
+  // 5. Vérifier s'il y a création en rafale depuis la même IP ou empreinte (FR-13)
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { count: recentIpCount } = await serviceClient
     .from('devices')
@@ -266,7 +327,7 @@ export async function POST(request: NextRequest) {
     .eq('ip_hash', ipHash)
     .gte('first_seen_at', tenMinutesAgo);
 
-  const shouldFlag = (recentIpCount ?? 0) >= 8;
+  const shouldFlag = (recentIpCount ?? 0) >= 25;
 
   // Générer un nouveau token si un ancien token délié existait
   const finalRawToken = tokenDevice ? crypto.randomUUID() : rawToken;

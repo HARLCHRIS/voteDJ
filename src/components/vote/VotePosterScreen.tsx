@@ -39,6 +39,7 @@ interface VotePosterScreenProps {
   nextDjPhotoUrl?: string | null;
   currentScore: AllowedScore | null;
   scoreSubmitStatus: RequestStatus;
+  isBindingPending?: boolean;
   errorMessage?: string | null;
   inAppDetection: InAppBrowserDetection;
   initialPickerOpen?: boolean;
@@ -59,6 +60,7 @@ export function VotePosterScreen({
   nextDjPhotoUrl,
   currentScore,
   scoreSubmitStatus,
+  isBindingPending = false,
   errorMessage,
   inAppDetection,
   initialPickerOpen = false,
@@ -78,17 +80,17 @@ export function VotePosterScreen({
   }, [nextDjPhotoUrl]);
 
   useEffect(() => {
-    if (phase !== 'open') {
+    if (phase !== 'open' || isBindingPending) {
       setPickerOpen(false);
       setPendingScore(null);
     }
-  }, [phase]);
+  }, [phase, isBindingPending]);
 
   const isSubmittingScore =
     scoreSubmitStatus === 'loading' || pendingScore !== null;
 
   const handleScoreClick = async (score: AllowedScore) => {
-    if (phase !== 'open' || isSubmittingScore) {
+    if (phase !== 'open' || isBindingPending || isSubmittingScore) {
       return;
     }
     setPendingScore(score);
@@ -105,7 +107,7 @@ export function VotePosterScreen({
 
   const isActionClickable =
     phase === 'unauthenticated' ||
-    phase === 'open' ||
+    (phase === 'open' && !isBindingPending) ||
     phase === 'error';
 
   const handleLeftBlockClick = () => {
@@ -114,6 +116,7 @@ export function VotePosterScreen({
       return;
     }
     if (phase === 'open') {
+      if (isBindingPending) return;
       setPickerOpen((prev) => !prev);
       return;
     }
@@ -327,7 +330,11 @@ export function VotePosterScreen({
                   'cursor-default bg-[#09421A] text-[#E5ED1B]',
                 phase === 'error' &&
                   'bg-[#7D1515] text-[#E5ED1B] hover:bg-[#931B1B]',
-                (phase === 'open' || phase === 'unauthenticated') &&
+                phase === 'open' &&
+                  isBindingPending &&
+                  'cursor-wait bg-[#09421A] text-[#E5ED1B]/90',
+                ((phase === 'open' && !isBindingPending) ||
+                  phase === 'unauthenticated') &&
                   'bg-[#09421A] text-[#E5ED1B] hover:bg-[#0D5924] active:brightness-95'
               )}
             >
@@ -344,9 +351,16 @@ export function VotePosterScreen({
               ) : null}
 
               {phase === 'open' ? (
-                <span className="text-lg font-black tracking-wider uppercase sm:text-xl">
-                  NOTER
-                </span>
+                isBindingPending ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black tracking-wide uppercase sm:text-sm">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    VÉRIFICATION…
+                  </span>
+                ) : (
+                  <span className="text-lg font-black tracking-wider uppercase sm:text-xl">
+                    NOTER
+                  </span>
+                )
               ) : null}
 
               {phase === 'voted' && currentScore !== null ? (

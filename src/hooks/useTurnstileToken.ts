@@ -12,6 +12,8 @@ declare global {
 const TURNSTILE_SCRIPT_ID = 'cf-turnstile-script';
 const TURNSTILE_SCRIPT_SRC =
   'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+const TURNSTILE_SCRIPT_TIMEOUT_MS = 6000;
+const TURNSTILE_WIDGET_TIMEOUT_MS = 15000;
 
 interface UseTurnstileTokenOptions {
   active: boolean;
@@ -30,6 +32,7 @@ export function useTurnstileToken({ active }: UseTurnstileTokenOptions) {
   const widgetIdRef = useRef<string | null>(null);
 
   const [reloadAttempt, setReloadAttempt] = useState(0);
+  const [scriptReady, setScriptReady] = useState(false);
   const [status, setStatus] = useState<RequestStatus>(
     enabled ? 'loading' : 'success'
   );
@@ -40,6 +43,8 @@ export function useTurnstileToken({ active }: UseTurnstileTokenOptions) {
     if (!enabled || !siteKey || !containerRef.current || !window.turnstile) {
       return;
     }
+
+    setScriptReady(true);
 
     if (widgetIdRef.current) {
       return;
@@ -81,6 +86,7 @@ export function useTurnstileToken({ active }: UseTurnstileTokenOptions) {
 
   useEffect(() => {
     if (!enabled) {
+      setScriptReady(false);
       setStatus('success');
       setToken(null);
       setError(null);
@@ -101,6 +107,7 @@ export function useTurnstileToken({ active }: UseTurnstileTokenOptions) {
       };
     }
 
+    setScriptReady(false);
     setStatus('loading');
     let scriptEl = document.getElementById(
       TURNSTILE_SCRIPT_ID
@@ -111,6 +118,7 @@ export function useTurnstileToken({ active }: UseTurnstileTokenOptions) {
     };
     const handleError = () => {
       scriptEl?.remove();
+      setScriptReady(false);
       setToken(null);
       setStatus('error');
       setError('Impossible de charger la protection anti-robot Cloudflare.');
@@ -138,6 +146,30 @@ export function useTurnstileToken({ active }: UseTurnstileTokenOptions) {
     };
   }, [enabled, reloadAttempt, renderWidget]);
 
+  useEffect(() => {
+    if (!enabled || status !== 'loading' || typeof window === 'undefined') {
+      return;
+    }
+
+    // Évite qu'un script Cloudflare bloqué ou lent laisse le bouton de vote bloqué indéfiniment
+    const timeoutMs =
+      scriptReady || Boolean(window.turnstile)
+        ? TURNSTILE_WIDGET_TIMEOUT_MS
+        : TURNSTILE_SCRIPT_TIMEOUT_MS;
+
+    const timerId = window.setTimeout(() => {
+      setToken(null);
+      setStatus('error');
+      setError(
+        'Vérification de sécurité trop longue (réseau ou bloqueur). Appuyez sur Réessayer.'
+      );
+    }, timeoutMs);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [enabled, status, scriptReady, reloadAttempt]);
+
   /**
    * Réinitialise le widget Turnstile (ou recharge le script en cas d'échec réseau)
    * afin d'obtenir un nouveau jeton anti-robot à usage unique.
@@ -157,6 +189,7 @@ export function useTurnstileToken({ active }: UseTurnstileTokenOptions) {
     } else if (window.turnstile) {
       renderWidget();
     } else {
+      setScriptReady(false);
       document.getElementById(TURNSTILE_SCRIPT_ID)?.remove();
       setReloadAttempt((prev) => prev + 1);
     }

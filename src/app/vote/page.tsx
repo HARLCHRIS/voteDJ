@@ -67,14 +67,15 @@ function VotePageContent() {
 
   const turnstile = useTurnstileToken({ active: isActiveVoter });
 
-  const { inAppBrowser, bindingState, rebindDevice } = useDeviceBinding({
-    isAuthenticatedVoter: isActiveVoter,
-    userId: auth.userId,
-    turnstileEnabled: turnstile.enabled,
-    turnstileToken: turnstile.token,
-    turnstileStatus: turnstile.status,
-    turnstileError: turnstile.error,
-  });
+  const { inAppBrowser, bindingState, rebindDevice, retryBinding } =
+    useDeviceBinding({
+      isAuthenticatedVoter: isActiveVoter,
+      userId: auth.userId,
+      turnstileEnabled: turnstile.enabled,
+      turnstileToken: turnstile.token,
+      turnstileStatus: turnstile.status,
+      turnstileError: turnstile.error,
+    });
 
   const live = useLivePerformance();
   const openPerformance = live.data?.openPerformance ?? null;
@@ -262,13 +263,24 @@ function VotePageContent() {
     phase = 'open';
   }
 
+  const isBindingPending =
+    isActiveVoter &&
+    bindingState.status !== 'success' &&
+    bindingState.status !== 'error';
+  const showTurnstileContainer =
+    isBindingPending && phase !== 'in_app_browser';
+
   return (
     <>
       {turnstile.enabled ? (
         <div
           ref={turnstile.containerRef}
-          className="pointer-events-none fixed bottom-2 left-2 z-50"
-          aria-hidden="true"
+          className={
+            showTurnstileContainer
+              ? 'fixed bottom-24 left-1/2 z-50 -translate-x-1/2'
+              : 'pointer-events-none fixed bottom-24 left-1/2 -z-10 -translate-x-1/2 opacity-0'
+          }
+          aria-hidden={!showTurnstileContainer}
         />
       ) : null}
       <VotePosterScreen
@@ -287,12 +299,15 @@ function VotePageContent() {
         nextDjPhotoUrl={live.data?.nextPerformancePhotoUrl ?? null}
         currentScore={scoring.currentScore}
         scoreSubmitStatus={scoring.status}
+        isBindingPending={isBindingPending}
         errorMessage={errorMessage}
         inAppDetection={inAppBrowser}
         onSignInGoogle={() => void auth.signInWithGoogle('/vote')}
         onSelectScore={async (score) => {
           if (bindingState.status !== 'success') {
-            const bound = await rebindDevice(turnstile.token);
+            const bound = await rebindDevice(turnstile.token, {
+              failIfTurnstilePending: true,
+            });
             if (!bound) {
               return;
             }
@@ -305,11 +320,7 @@ function VotePageContent() {
           } else if (isAdminSession) {
             void auth.signOut();
           } else if (bindingState.status === 'error') {
-            if (turnstile.enabled) {
-              turnstile.reset();
-            } else {
-              void rebindDevice();
-            }
+            void retryBinding(turnstile.reset);
           } else {
             if (scoring.status === 'error') {
               scoring.clearError();
