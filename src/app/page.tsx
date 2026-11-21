@@ -1,7 +1,15 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, Disc3, Radio, Trophy } from 'lucide-react';
+import {
+  ArrowRight,
+  Calendar,
+  Disc3,
+  MapPin,
+  Radio,
+  Trophy,
+} from 'lucide-react';
 import { CheckmarkBadge3D } from '@/components/shared/CheckmarkBadge3D';
+import { getRoundSchedule } from '@/lib/round-schedule';
 import { createSupabaseServiceClient } from '@/lib/supabase/server';
 
 export const revalidate = 10;
@@ -81,6 +89,17 @@ async function loadPublicProgram(): Promise<{
 export default async function HomePage() {
   const { rounds } = await loadPublicProgram();
   const visibleRounds = rounds.filter((r) => r.status !== 'draft');
+  const scheduledRounds = visibleRounds.filter(
+    (r) => r.status === 'scheduled'
+  );
+  const activeOrCompletedRounds = visibleRounds.filter(
+    (r) => r.status === 'live' || r.status === 'completed'
+  );
+  const hasLiveRound = activeOrCompletedRounds.some((r) => r.status === 'live');
+  const nextScheduledRound = scheduledRounds[0] ?? null;
+  const nextScheduleInfo = nextScheduledRound
+    ? getRoundSchedule(nextScheduledRound.name)
+    : null;
 
   return (
     <div className="min-h-screen pt-6 pb-14 sm:pt-10">
@@ -96,6 +115,16 @@ export default async function HomePage() {
 
           <div className="relative z-10 grid items-center gap-8 md:grid-cols-12">
             <div className="md:col-span-7 space-y-4">
+              {!hasLiveRound && nextScheduledRound && nextScheduleInfo ? (
+                <div className="inline-flex flex-wrap items-center gap-2 rounded-full border border-[#76E000]/50 bg-black/35 px-3.5 py-1.5 text-xs font-extrabold tracking-wide text-[#E5ED1B] uppercase">
+                  <Calendar className="h-3.5 w-3.5 text-[#76E000]" />
+                  <span>
+                    {nextScheduledRound.name} • {nextScheduleInfo.dateLabel} •{' '}
+                    {nextScheduleInfo.venueLabel}
+                  </span>
+                </div>
+              ) : null}
+
               <h1 className="text-3xl font-black leading-[1.05] tracking-tight uppercase sm:text-5xl">
                 DJ Challenge{' '}
                 <span className="text-[#D9E81B]">Days Party</span>
@@ -159,83 +188,126 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Primes publiées et DJ engagés (les primes en brouillon restent masquées) */}
-        <section
-          className={
-            visibleRounds.length > 1 ? 'grid gap-5 md:grid-cols-2' : 'grid gap-5'
-          }
-        >
-          {visibleRounds.map((round) => (
-            <div
-              key={round.id}
-              className="rounded-2xl border border-white/15 bg-[#042812]/85 p-5 shadow-xl"
-            >
-              <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3">
-                <h2 className="text-lg font-black tracking-wide text-[#D9E81B] uppercase">
-                  {round.name}
-                </h2>
-                <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold uppercase text-white">
-                  {round.status === 'live'
-                    ? 'En direct'
-                    : round.status === 'completed'
-                      ? 'Terminée'
-                      : round.status === 'scheduled'
-                        ? 'À venir'
-                        : 'En préparation'}
-                </span>
-              </div>
-
-              {round.djs.length === 0 ? (
-                <p className="mt-4 text-xs text-white/70">
-                  La liste des DJ pour {round.name} sera publiée très
-                  prochainement par l’organisation.
-                </p>
-              ) : (
-                <ul
-                  className={
-                    visibleRounds.length === 1
-                      ? 'mt-3 grid gap-2 sm:grid-cols-2'
-                      : 'mt-3 space-y-2'
-                  }
+        {/* Primes à venir (date & lieu sans dévoiler le line-up avant le jour J) */}
+        {scheduledRounds.length > 0 ? (
+          <section className="grid gap-5">
+            {scheduledRounds.map((round) => {
+              const schedule = getRoundSchedule(round.name);
+              return (
+                <div
+                  key={round.id}
+                  className="rounded-2xl border-2 border-[#76E000]/40 bg-gradient-to-r from-[#09421A]/95 via-[#063B1B]/95 to-[#042812] p-5 shadow-xl sm:p-6"
                 >
-                  {round.djs.map((dj, index) => (
-                    <li
-                      key={dj.performanceId}
-                      className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-black text-[#76E000]">
-                          #{String(index + 1).padStart(2, '0')}
-                        </span>
-                        <div>
-                          <p className="font-extrabold text-white uppercase">
-                            {dj.stageName}
-                          </p>
-                          {dj.genre ? (
-                            <p className="text-[11px] text-white/60">
-                              {dj.genre}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {dj.status === 'open' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[#76E000] px-2.5 py-0.5 text-[10px] font-black text-[#063B1B] uppercase">
-                          <Disc3 className="h-3 w-3 animate-spin" />
-                          Sur scène
-                        </span>
-                      ) : dj.isQualified ? (
-                        <span className="rounded-full bg-[#D9E81B] px-2.5 py-0.5 text-[10px] font-black text-[#063B1B] uppercase">
-                          Qualifié
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-lg font-black tracking-wide text-[#D9E81B] uppercase sm:text-xl">
+                        {round.name}
+                      </h2>
+                      {schedule ? (
+                        <span className="inline-flex items-center gap-2 rounded-full border border-[#76E000]/45 bg-black/35 px-3 py-1 text-xs font-extrabold text-white">
+                          <Calendar className="h-3.5 w-3.5 text-[#76E000]" />
+                          {schedule.dateLabel}
+                          <span className="text-white/40">•</span>
+                          <MapPin className="h-3.5 w-3.5 text-[#D9E81B]" />
+                          {schedule.venueLabel}
                         </span>
                       ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </section>
+                    </div>
+                    <span className="rounded-full bg-[#76E000] px-3 py-1 text-[11px] font-black uppercase text-[#063B1B]">
+                      À venir
+                    </span>
+                  </div>
+
+                  <p className="mt-3 text-xs leading-relaxed text-white/85 sm:text-sm">
+                    {schedule
+                      ? `Rendez-vous le ${schedule.dateLabel} au ${schedule.venueLabel} pour le ${round.name}. Les votes et l’ordre de passage des DJ ouvriront en direct le jour J.`
+                      : `Le ${round.name} ouvrira prochainement en direct le jour J.`}
+                  </p>
+                </div>
+              );
+            })}
+          </section>
+        ) : null}
+
+        {/* Primes en cours ou terminées avec la liste des DJ */}
+        {activeOrCompletedRounds.length > 0 ? (
+          <section
+            className={
+              activeOrCompletedRounds.length > 1
+                ? 'grid gap-5 md:grid-cols-2'
+                : 'grid gap-5'
+            }
+          >
+            {activeOrCompletedRounds.map((round) => (
+              <div
+                key={round.id}
+                className="rounded-2xl border border-white/15 bg-[#042812]/85 p-5 shadow-xl"
+              >
+                <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3">
+                  <h2 className="text-lg font-black tracking-wide text-[#D9E81B] uppercase">
+                    {round.name}
+                  </h2>
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold uppercase text-white">
+                    {round.status === 'live'
+                      ? 'En direct'
+                      : round.status === 'completed'
+                        ? 'Terminée'
+                        : 'En préparation'}
+                  </span>
+                </div>
+
+                {round.djs.length === 0 ? (
+                  <p className="mt-4 text-xs text-white/70">
+                    La liste des DJ pour {round.name} sera publiée très
+                    prochainement par l’organisation.
+                  </p>
+                ) : (
+                  <ul
+                    className={
+                      activeOrCompletedRounds.length === 1
+                        ? 'mt-3 grid gap-2 sm:grid-cols-2'
+                        : 'mt-3 space-y-2'
+                    }
+                  >
+                    {round.djs.map((dj, index) => (
+                      <li
+                        key={dj.performanceId}
+                        className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-black text-[#76E000]">
+                            #{String(index + 1).padStart(2, '0')}
+                          </span>
+                          <div>
+                            <p className="font-extrabold text-white uppercase">
+                              {dj.stageName}
+                            </p>
+                            {dj.genre ? (
+                              <p className="text-[11px] text-white/60">
+                                {dj.genre}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {dj.status === 'open' ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#76E000] px-2.5 py-0.5 text-[10px] font-black text-[#063B1B] uppercase">
+                            <Disc3 className="h-3 w-3 animate-spin" />
+                            Sur scène
+                          </span>
+                        ) : dj.isQualified ? (
+                          <span className="rounded-full bg-[#D9E81B] px-2.5 py-0.5 text-[10px] font-black text-[#063B1B] uppercase">
+                            Qualifié
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </section>
+        ) : null}
       </main>
     </div>
   );

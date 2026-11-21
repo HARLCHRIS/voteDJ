@@ -172,6 +172,12 @@ export interface TurnstileRenderOptions {
   'expired-callback'?: () => void;
 }
 
+export interface RoundScheduleInfo {
+  dateLabel: string;
+  shortDateLabel: string;
+  venueLabel: string;
+}
+
 export interface TurnstileGlobalApi {
   render: (
     container: HTMLElement,

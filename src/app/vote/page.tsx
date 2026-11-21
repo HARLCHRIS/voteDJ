@@ -67,15 +67,14 @@ function VotePageContent() {
 
   const turnstile = useTurnstileToken({ active: isActiveVoter });
 
-  const { inAppBrowser, bindingState, rebindDevice, retryBinding } =
-    useDeviceBinding({
-      isAuthenticatedVoter: isActiveVoter,
-      userId: auth.userId,
-      turnstileEnabled: turnstile.enabled,
-      turnstileToken: turnstile.token,
-      turnstileStatus: turnstile.status,
-      turnstileError: turnstile.error,
-    });
+  const { inAppBrowser, bindingState, rebindDevice } = useDeviceBinding({
+    isAuthenticatedVoter: isActiveVoter,
+    userId: auth.userId,
+    turnstileEnabled: turnstile.enabled,
+    turnstileToken: turnstile.token,
+    turnstileStatus: turnstile.status,
+    turnstileError: turnstile.error,
+  });
 
   const live = useLivePerformance();
   const openPerformance = live.data?.openPerformance ?? null;
@@ -189,12 +188,12 @@ function VotePageContent() {
         dj={
           mappedPhase === 'waiting'
             ? {
-                id: 'waiting',
-                stageName: 'EN ATTENTE',
-                roundName: 'Prime 1',
-                performanceOrder: 0,
-                photoUrl: null,
-              }
+              id: 'waiting',
+              stageName: 'EN ATTENTE',
+              roundName: 'Prime 1',
+              performanceOrder: 0,
+              photoUrl: null,
+            }
             : previewDj
         }
         nextDjPhotoUrl={nextPreviewPhotoUrl}
@@ -267,8 +266,6 @@ function VotePageContent() {
     isActiveVoter &&
     bindingState.status !== 'success' &&
     bindingState.status !== 'error';
-  const showTurnstileContainer =
-    isBindingPending && phase !== 'in_app_browser';
 
   return (
     <>
@@ -276,24 +273,25 @@ function VotePageContent() {
         <div
           ref={turnstile.containerRef}
           className={
-            showTurnstileContainer
+            isBindingPending
               ? 'fixed bottom-24 left-1/2 z-50 -translate-x-1/2'
               : 'pointer-events-none fixed bottom-24 left-1/2 -z-10 -translate-x-1/2 opacity-0'
           }
-          aria-hidden={!showTurnstileContainer}
+          aria-hidden={!isBindingPending}
         />
       ) : null}
       <VotePosterScreen
         phase={phase}
+        roundStatus={live.data?.activeRound?.status ?? null}
         dj={
           phase === 'waiting'
             ? {
-                id: 'waiting',
-                stageName: 'EN ATTENTE',
-                roundName: live.data?.activeRound?.name ?? 'Prime 1',
-                performanceOrder: 0,
-                photoUrl: null,
-              }
+              id: 'waiting',
+              stageName: 'EN ATTENTE',
+              roundName: live.data?.activeRound?.name ?? 'Prime 1',
+              performanceOrder: 0,
+              photoUrl: null,
+            }
             : liveDj
         }
         nextDjPhotoUrl={live.data?.nextPerformancePhotoUrl ?? null}
@@ -320,7 +318,11 @@ function VotePageContent() {
           } else if (isAdminSession) {
             void auth.signOut();
           } else if (bindingState.status === 'error') {
-            void retryBinding(turnstile.reset);
+            if (turnstile.enabled) {
+              turnstile.reset();
+            } else {
+              void rebindDevice();
+            }
           } else {
             if (scoring.status === 'error') {
               scoring.clearError();

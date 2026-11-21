@@ -7,6 +7,7 @@ import { Check, Loader2, RefreshCw, AlertOctagon } from 'lucide-react';
 import { CheckmarkBadge3D } from '@/components/shared/CheckmarkBadge3D';
 import { InAppBrowserBanner } from '@/components/vote/InAppBrowserBanner';
 import { StylizedDjHeroName } from '@/components/vote/StylizedDjHeroName';
+import { getRoundSchedule } from '@/lib/round-schedule';
 import { cn } from '@/lib/utils';
 import {
   ALLOWED_SCORES,
@@ -14,6 +15,7 @@ import {
   type InAppBrowserDetection,
   type RequestStatus,
   type RoundName,
+  type RoundStatus,
 } from '@/types';
 
 export type VoteUiPhase =
@@ -36,6 +38,7 @@ export interface VotePosterDjView {
 interface VotePosterScreenProps {
   phase: VoteUiPhase;
   dj: VotePosterDjView | null;
+  roundStatus?: RoundStatus | null;
   nextDjPhotoUrl?: string | null;
   currentScore: AllowedScore | null;
   scoreSubmitStatus: RequestStatus;
@@ -57,6 +60,7 @@ interface VotePosterScreenProps {
 export function VotePosterScreen({
   phase,
   dj,
+  roundStatus = null,
   nextDjPhotoUrl,
   currentScore,
   scoreSubmitStatus,
@@ -104,6 +108,12 @@ export function VotePosterScreen({
 
   const showDjCenterpiece =
     phase !== 'waiting' && phase !== 'in_app_browser' && dj !== null;
+
+  const waitingSchedule = dj ? getRoundSchedule(dj.roundName) : null;
+  const isScheduledUpcoming =
+    phase === 'waiting' &&
+    roundStatus === 'scheduled' &&
+    waitingSchedule !== null;
 
   const isActionClickable =
     phase === 'unauthenticated' ||
@@ -238,7 +248,7 @@ export function VotePosterScreen({
             )}
           </div>
         ) : phase === 'waiting' ? (
-          <div className="flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center px-3 text-center">
             <Image
               src="/images/logo-days-party.png"
               alt="En attente du prochain passage"
@@ -247,9 +257,21 @@ export function VotePosterScreen({
               className="h-56 w-56 animate-vinyl-slow object-contain opacity-95 drop-shadow-[0_12px_28px_rgba(0,0,0,0.65)] sm:h-72 sm:w-72"
               priority
             />
-            <p className="mt-4 rounded-full border border-white/25 bg-black/50 px-4 py-1.5 text-xs font-extrabold tracking-[0.2em] text-[#E5ED1B] uppercase backdrop-blur-xs">
-              SCÈNE EN PRÉPARATION
-            </p>
+            {isScheduledUpcoming && waitingSchedule ? (
+              <div className="mt-4 flex flex-col items-center gap-1.5">
+                <p className="rounded-full border border-[#76E000]/60 bg-black/65 px-4 py-1.5 text-xs font-black tracking-[0.16em] text-[#E5ED1B] uppercase shadow-lg backdrop-blur-xs sm:text-sm">
+                  {dj?.roundName} • {waitingSchedule.dateLabel} •{' '}
+                  {waitingSchedule.venueLabel}
+                </p>
+                <p className="text-[11px] font-extrabold tracking-[0.2em] text-white/90 uppercase">
+                  En attendant le jour J
+                </p>
+              </div>
+            ) : (
+              <p className="mt-4 rounded-full border border-white/25 bg-black/50 px-4 py-1.5 text-xs font-extrabold tracking-[0.2em] text-[#E5ED1B] uppercase backdrop-blur-xs">
+                SCÈNE EN PRÉPARATION
+              </p>
+            )}
           </div>
         ) : null}
       </div>
@@ -346,7 +368,7 @@ export function VotePosterScreen({
 
               {phase === 'waiting' ? (
                 <span className="text-xs font-black tracking-wide uppercase sm:text-sm">
-                  PROCHAIN DJ…
+                  {isScheduledUpcoming ? 'PROCHAIN PRIME' : 'PROCHAIN DJ…'}
                 </span>
               ) : null}
 
@@ -388,18 +410,24 @@ export function VotePosterScreen({
             <div className="col-span-6 flex min-h-[64px] flex-col justify-center bg-white px-2.5 py-2 text-left sm:min-h-[68px] sm:px-3">
               <p className="truncate text-sm font-black leading-tight tracking-tight text-[#111111] uppercase sm:text-base">
                 {phase === 'waiting'
-                  ? 'EN ATTENTE'
+                  ? isScheduledUpcoming
+                    ? 'PROCHAINEMENT'
+                    : 'EN ATTENTE'
                   : (dj?.stageName ?? 'DJ CHALLENGE')}
               </p>
               <p className="mt-0.5 text-[10px] font-extrabold tracking-wide text-[#8B1A1A] uppercase sm:text-[11px]">
                 {phase === 'waiting'
-                  ? (dj?.roundName ?? 'PRIME 1')
+                  ? isScheduledUpcoming && waitingSchedule
+                    ? `${dj?.roundName} • ${waitingSchedule.shortDateLabel}`
+                    : (dj?.roundName ?? 'PRIME 1')
                   : phase === 'closed'
                     ? `${dj?.roundName ?? 'PRIME 1'} • TERMINÉ`
                     : `${dj?.roundName ?? 'PRIME 1'}`}
               </p>
               <p className="mt-0.5 text-[9px] font-bold tracking-wider text-neutral-600 uppercase">
-                EAT &amp; DRINK COTONOU
+                {isScheduledUpcoming && waitingSchedule
+                  ? `${waitingSchedule.venueLabel} • EAT & DRINK COTONOU`
+                  : 'EAT & DRINK COTONOU'}
               </p>
             </div>
           </div>
