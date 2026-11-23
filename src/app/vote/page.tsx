@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   VotePosterScreen,
   type VotePosterDjView,
@@ -52,10 +52,15 @@ const TEST_DJS: Record<string, VotePosterDjView> = {
  * envoi `/api/scores/submit`) dans l'interface plein écran inspirée de l'affiche VOTE.
  */
 function VotePageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const previewMode = searchParams.get('preview');
   const previewDjKey = searchParams.get('dj') || '1';
   const previewScoreParam = Number(searchParams.get('score') || '8');
+  const oauthErrorParam =
+    searchParams.get('auth_error') ||
+    searchParams.get('error_code') ||
+    searchParams.get('error');
 
   const allowPreview =
     Boolean(previewMode) &&
@@ -67,14 +72,15 @@ function VotePageContent() {
 
   const turnstile = useTurnstileToken({ active: isActiveVoter });
 
-  const { inAppBrowser, bindingState, rebindDevice } = useDeviceBinding({
-    isAuthenticatedVoter: isActiveVoter,
-    userId: auth.userId,
-    turnstileEnabled: turnstile.enabled,
-    turnstileToken: turnstile.token,
-    turnstileStatus: turnstile.status,
-    turnstileError: turnstile.error,
-  });
+  const { inAppBrowser, bindingState, rebindDevice, retryBinding } =
+    useDeviceBinding({
+      isAuthenticatedVoter: isActiveVoter,
+      userId: auth.userId,
+      turnstileEnabled: turnstile.enabled,
+      turnstileToken: turnstile.token,
+      turnstileStatus: turnstile.status,
+      turnstileError: turnstile.error,
+    });
 
   const live = useLivePerformance();
   const openPerformance = live.data?.openPerformance ?? null;
@@ -227,11 +233,20 @@ function VotePageContent() {
   let phase: VoteUiPhase = 'waiting';
   let errorMessage: string | null = null;
 
+  const hasOAuthRedirectError =
+    Boolean(oauthErrorParam) && !auth.isAuthenticated;
+
   if (inAppBrowser.isInApp) {
     phase = 'in_app_browser';
   } else if (!isOnline) {
     phase = 'error';
     errorMessage = 'Connexion réseau perdue. Vérifiez votre 3G/4G/Wi-Fi.';
+  } else if (hasOAuthRedirectError) {
+    phase = 'error';
+    errorMessage =
+      oauthErrorParam === 'access_denied'
+        ? 'Connexion Google annulée. Appuyez sur « Réessayer » pour vous connecter.'
+        : 'La connexion Google n’a pas abouti. Appuyez sur « Réessayer » pour recommencer.';
   } else if (live.status === 'error' && !live.data) {
     phase = 'error';
     errorMessage = live.error ?? 'Impossible de joindre le serveur du direct.';
@@ -266,6 +281,8 @@ function VotePageContent() {
     isActiveVoter &&
     bindingState.status !== 'success' &&
     bindingState.status !== 'error';
+  const showTurnstileContainer =
+    isBindingPending && phase !== 'in_app_browser';
 
   return (
     <>
@@ -273,11 +290,11 @@ function VotePageContent() {
         <div
           ref={turnstile.containerRef}
           className={
-            isBindingPending
+            showTurnstileContainer
               ? 'fixed bottom-24 left-1/2 z-50 -translate-x-1/2'
               : 'pointer-events-none fixed bottom-24 left-1/2 -z-10 -translate-x-1/2 opacity-0'
           }
-          aria-hidden={!isBindingPending}
+          aria-hidden={!showTurnstileContainer}
         />
       ) : null}
       <VotePosterScreen
@@ -313,16 +330,15 @@ function VotePageContent() {
           await scoring.submitScore(score);
         }}
         onRetry={() => {
-          if (auth.status === 'error') {
+          if (hasOAuthRedirectError) {
+            router.replace('/vote');
+            void auth.refreshSession();
+          } else if (auth.status === 'error') {
             void auth.refreshSession();
           } else if (isAdminSession) {
             void auth.signOut();
           } else if (bindingState.status === 'error') {
-            if (turnstile.enabled) {
-              turnstile.reset();
-            } else {
-              void rebindDevice();
-            }
+            void retryBinding(turnstile.reset);
           } else {
             if (scoring.status === 'error') {
               scoring.clearError();

@@ -9,7 +9,39 @@ const montserrat = Montserrat({
   display: 'swap',
 });
 
+/**
+ * Résout l'URL publique de base pour les métadonnées Next.js sans retomber sur localhost en production.
+ */
+function resolveMetadataBase(): URL | undefined {
+  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (
+    configuredSiteUrl &&
+    configuredSiteUrl.startsWith('https://') &&
+    !configuredSiteUrl.includes('localhost')
+  ) {
+    try {
+      return new URL(configuredSiteUrl);
+    } catch {
+      return undefined;
+    }
+  }
+
+  const vercelHost =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+    process.env.VERCEL_URL?.trim();
+  if (vercelHost) {
+    try {
+      return new URL(`https://${vercelHost}`);
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
 export const metadata: Metadata = {
+  metadataBase: resolveMetadataBase(),
   title: 'DJ Challenge – Eat & Drink Festival Cotonou 2027',
   description:
     'Plateforme officielle de notation en direct du DJ Challenge – Eat & Drink Festival Cotonou 2027 (Days Party).',
